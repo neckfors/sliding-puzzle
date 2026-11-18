@@ -3,7 +3,7 @@
   const $ = id => document.getElementById(id);
   const boardEl = $('board'), sizeSelect = $('sizeSelect');
   const tileNodes = new Map();
-  let emptyNode = null, fxFrame = 0, fxParticles = [];
+  let emptyNode = null;
   const state = { size:4, tiles:[], initial:[], moves:0, seconds:0, started:false, solved:false, history:[], timer:null, sound:true, lastCorrect:new Set(), celebratedRows:new Set(), toastTimer:null };
   const total = () => state.size * state.size - 1;
   const goal = i => i === state.size * state.size - 1 ? 0 : i + 1;
@@ -53,14 +53,6 @@
   function celebrateRow(row) {
     const tiles=[...boardEl.querySelectorAll('.tile')].filter(el=>Math.floor(Number(el.dataset.index)/state.size)===row);
     tiles.forEach((el,i)=>{el.classList.remove('row-celebrate');void el.offsetWidth;el.style.setProperty('--row-delay',i*38+'ms');el.classList.add('row-celebrate');});
-    burstConfetti(76,boardEl.getBoundingClientRect(),.9,row);
-  }
-  function burstConfetti(count,bounds,power=1,rowIndex=null){
-    const canvas=$('fx'),ctx=canvas.getContext('2d'),dpr=Math.min(devicePixelRatio||1,2);
-    if(canvas.width!==Math.round(innerWidth*dpr)||canvas.height!==Math.round(innerHeight*dpr)){canvas.width=Math.round(innerWidth*dpr);canvas.height=Math.round(innerHeight*dpr);canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';}
-    const x=(bounds.left+bounds.width*.5)*dpr,y=(rowIndex===null?bounds.top+bounds.height*.48:bounds.top+bounds.height*((rowIndex+.5)/state.size))*dpr;
-    for(let i=0;i<count;i++){const angle=Math.random()*Math.PI*2,speed=(2.5+Math.random()*7)*power;fxParticles.push({x,y,vx:Math.cos(angle)*speed*dpr,vy:(Math.sin(angle)*speed-2.5*power)*dpr,gravity:.13*dpr,rotation:Math.random()*6.28,spin:(Math.random()-.5)*.24,size:(4+Math.random()*7)*dpr,life:100+Math.random()*55,hue:Math.floor(Math.random()*360)});}
-    if(!fxFrame){const frame=()=>{ctx.clearRect(0,0,canvas.width,canvas.height);fxParticles=fxParticles.filter(p=>p.life>0);for(const p of fxParticles){p.x+=p.vx;p.y+=p.vy;p.vy+=p.gravity;p.vx*=.992;p.rotation+=p.spin;p.life--;ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rotation);ctx.globalAlpha=Math.min(1,p.life/22);ctx.fillStyle='hsl('+p.hue+' 95% 65%)';ctx.fillRect(-p.size/2,-p.size/2,p.size,p.size*1.55);ctx.restore();}if(fxParticles.length)fxFrame=requestAnimationFrame(frame);else{ctx.clearRect(0,0,canvas.width,canvas.height);fxFrame=0;}};fxFrame=requestAnimationFrame(frame);}
   }
   function neighbors(i) { const e=state.tiles.indexOf(0),r=Math.floor(i/state.size),c=i%state.size,er=Math.floor(e/state.size),ec=e%state.size;return Math.abs(r-er)+Math.abs(c-ec)===1; }
   function move(i,fromUndo=false) {
@@ -95,8 +87,7 @@
     state.solved=true;stopTimer();boardEl.classList.add('won');tileNodes.forEach(el=>el.disabled=true);
     const b=best();if(!b||state.moves<b.moves){try{localStorage.setItem(bestKey(),JSON.stringify({moves:state.moves,seconds:state.seconds}));}catch{}}
     $('winSummary').textContent='Solved in '+state.moves+' moves · '+fmt(state.seconds)+'. That was all you.';$('winOverlay').hidden=false;feedback('Every tile. Every row. Beautifully done.');toast('✦ PUZZLE COMPLETE! ✦');
-    const frame=$('boardFrame');frame.classList.remove('grand-win');void frame.offsetWidth;frame.classList.add('grand-win');const bounds=frame.getBoundingClientRect();
-    burstConfetti(250,bounds,1.35);setTimeout(()=>burstConfetti(115,bounds,1.05),180);setTimeout(()=>burstConfetti(90,bounds,.85),390);
+    const frame=$('boardFrame');frame.classList.remove('grand-win');void frame.offsetWidth;frame.classList.add('grand-win');
     [600,800,980,1240,1560].forEach((hz,i)=>setTimeout(()=>sound(hz,.25,'sine',.055),i*115));updateProgress();
   }
   function newSize(size) { state.size=size;state.initial=[];shuffle();state.initial=state.tiles.slice();updateBest(); }
