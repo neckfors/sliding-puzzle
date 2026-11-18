@@ -1,0 +1,23 @@
+{
+  "name": "Sliding Puzzle",
+  "short_name": "Sliding Puzzle",
+  "description": "A beautiful, satisfying sliding number puzzle.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#101426",
+  "theme_color": "#101426",
+  "categories": [
+    "games",
+    "entertainment"
+  ],
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
