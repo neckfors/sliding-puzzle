@@ -29,13 +29,39 @@
     $('milestoneCount').textContent=[doneTile,doneRow,donePuzzle].filter(Boolean).length+' / 3';
     updateBest();
   }
-  function render(animateCorrect=[]) {
+  function render(animateCorrect=[], animateMove=true) {
+    const previous = new Map();
+    if (animateMove) boardEl.querySelectorAll('.tile:not(.empty)').forEach(el => previous.set(Number(el.textContent), el.getBoundingClientRect()));
     boardEl.style.setProperty('--size',state.size);boardEl.innerHTML='';
     state.tiles.forEach((v,i)=>{
       const b=document.createElement('button');b.type='button';b.className='tile'+(v===0?' empty':'')+(v!==0&&isCorrect(v,i)?' correct':'')+(animateCorrect.includes(v)?' just-correct':'');
       b.textContent=v||'';b.setAttribute('aria-label',v===0?'Empty space':'Tile '+v+(isCorrect(v,i)?', correctly placed':''));b.disabled=v===0||state.solved;b.dataset.index=i;b.addEventListener('click',()=>move(i));boardEl.appendChild(b);
+      const from=previous.get(v);
+      if(v && from && animateMove){
+        const to=b.getBoundingClientRect(),dx=from.left-to.left,dy=from.top-to.top;
+        if(dx||dy)b.animate([{transform:'translate('+dx+'px,'+dy+'px) scale(1.035)'},{transform:'translate(0,0) scale(1)'}],{duration:230,easing:'cubic-bezier(.2,.85,.25,1)'});
+      }
     });
     updateProgress();
+  }
+  function celebrateRow(row) {
+    const tiles=[...boardEl.querySelectorAll('.tile')].filter(el=>Math.floor(Number(el.dataset.index)/state.size)===row);
+    tiles.forEach((el,i)=>{el.classList.remove('row-celebrate');void el.offsetWidth;el.style.setProperty('--row-delay',i*38+'ms');el.classList.add('row-celebrate');});
+    burstConfetti(26, boardEl.getBoundingClientRect(), 0.55);
+  }
+  function burstConfetti(count, bounds, power=1) {
+    const layer=$('celebrationLayer');if(!layer)return;
+    for(let i=0;i<count;i++){
+      const p=document.createElement('i');p.className='confetti';
+      p.style.left=(bounds.left+bounds.width*(.18+Math.random()*.64))+'px';
+      p.style.top=(bounds.top+bounds.height*(.18+Math.random()*.5))+'px';
+      p.style.setProperty('--drift',((Math.random()-.5)*240*power)+'px');
+      p.style.setProperty('--spin',(Math.random()*900-450)+'deg');
+      p.style.setProperty('--fall',(420+Math.random()*480)+'px');
+      p.style.setProperty('--hue',Math.floor(Math.random()*360));
+      p.style.setProperty('--duration',(850+Math.random()*900)+'ms');
+      layer.appendChild(p);p.addEventListener('animationend',()=>p.remove(),{once:true});
+    }
   }
   function neighbors(i) { const e=state.tiles.indexOf(0),r=Math.floor(i/state.size),c=i%state.size,er=Math.floor(e/state.size),ec=e%state.size;return Math.abs(r-er)+Math.abs(c-ec)===1; }
   function move(i,fromUndo=false) {
@@ -49,7 +75,7 @@
     if(nowCorrect&&!wasCorrect){sound(790,.13,'sine',.045);feedback('Yes! Number '+value+' found its place.');toast('✦ Number '+value+' — right where it belongs!');}
     else {sound(440,.055,'triangle',.025);feedback('Nice move. Keep finding your flow.');}
     const rows=rowsDone();
-    rows.forEach(r=>{if(!state.celebratedRows.has(r)){state.celebratedRows.add(r);sound(980,.22,'sine',.05);toast('▤ A whole row! Look at that progress.');feedback('A whole row in place. That feels good.');}});
+    rows.forEach(r=>{if(!state.celebratedRows.has(r)){state.celebratedRows.add(r);celebrateRow(r);sound(980,.16,'sine',.05);setTimeout(()=>sound(1240,.2,'sine',.045),85);toast('✦ ROW COMPLETE!');feedback('A whole row in place. That feels good.');}});
     if(solvedCount()===total()){win();} else updateProgress();
     return true;
   }
@@ -70,7 +96,7 @@
     state.solved=true;stopTimer();boardEl.classList.add('won');render();
     const b=best();if(!b||state.moves<b.moves){try{localStorage.setItem(bestKey(),JSON.stringify({moves:state.moves,seconds:state.seconds}));}catch{}}
     $('winSummary').textContent='Solved in '+state.moves+' moves · '+fmt(state.seconds)+'. That was all you.';
-    $('winOverlay').hidden=false;feedback('Every tile. Every row. Beautifully done.');toast('✦ You solved the whole puzzle!');sound(660,.13,'sine',.05);setTimeout(()=>sound(880,.18,'sine',.05),120);setTimeout(()=>sound(1100,.3,'sine',.05),260);
+    $('winOverlay').hidden=false;feedback('Every tile. Every row. Beautifully done.');toast('✦ PUZZLE COMPLETE! ✦');\n    const frame=$('boardFrame');frame.classList.remove('grand-win');void frame.offsetWidth;frame.classList.add('grand-win');\n    burstConfetti(110,frame.getBoundingClientRect(),1.35);\n    [523,659,784,1047,1319].forEach((hz,i)=>setTimeout(()=>sound(hz,.26,'sine',.055),i*105));
     updateProgress();
   }
   function newSize(size) { state.size=size;state.initial=[];shuffle();state.initial=state.tiles.slice();updateBest(); }
