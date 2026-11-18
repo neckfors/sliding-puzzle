@@ -32,11 +32,22 @@
     updateBest();
   }
   function render(animateCorrect=[], animateMove=true) {
-    const previous=new Map();if(animateMove)tileNodes.forEach((el,v)=>previous.set(v,el.getBoundingClientRect()));
-    if(tileNodes.size!==total()||!emptyNode){boardEl.innerHTML='';tileNodes.clear();for(let v=1;v<=total();v++){const el=document.createElement('button');el.type='button';el.className='tile';el.textContent=v;el.addEventListener('click',()=>move(Number(el.dataset.index)));tileNodes.set(v,el);boardEl.appendChild(el);}emptyNode=document.createElement('div');emptyNode.className='tile empty';emptyNode.setAttribute('aria-hidden','true');boardEl.appendChild(emptyNode);}
+    const previous=new Map();
+    if(animateMove)tileNodes.forEach((el,v)=>previous.set(v,el.getBoundingClientRect()));
+    if(tileNodes.size!==total()||!emptyNode){
+      boardEl.innerHTML='';tileNodes.clear();
+      for(let v=1;v<=total();v++){const el=document.createElement('button');el.type='button';el.className='tile';el.textContent=v;el.addEventListener('click',()=>move(Number(el.dataset.index)));tileNodes.set(v,el);}
+      emptyNode=document.createElement('div');emptyNode.className='tile empty';emptyNode.setAttribute('aria-hidden','true');
+    }
     boardEl.style.setProperty('--size',state.size);
-    state.tiles.forEach((v,i)=>{const el=v===0?emptyNode:tileNodes.get(v);if(v){el.dataset.index=i;el.classList.toggle('correct',isCorrect(v,i));el.classList.toggle('just-correct',animateCorrect.includes(v));el.disabled=state.solved;el.setAttribute('aria-label','Tile '+v+(isCorrect(v,i)?', correctly placed':''));}el.style.gridColumn=String(i%state.size+1);el.style.gridRow=String(Math.floor(i/state.size)+1);});
-    if(animateMove&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){boardEl.getBoundingClientRect();state.tiles.forEach(v=>{if(!v)return;const el=tileNodes.get(v),from=previous.get(v);if(!from)return;const to=el.getBoundingClientRect(),dx=from.left-to.left,dy=from.top-to.top;if(Math.abs(dx)+Math.abs(dy)>1)el.animate([{translate:dx+'px '+dy+'px'},{translate:'0px 0px'}],{duration:310,easing:'cubic-bezier(.22,.82,.22,1)'});});}
+    state.tiles.forEach((v,i)=>{
+      const el=v===0?emptyNode:tileNodes.get(v);
+      if(v){el.dataset.index=i;el.classList.toggle('correct',isCorrect(v,i));el.classList.toggle('just-correct',animateCorrect.includes(v));el.disabled=state.solved;el.setAttribute('aria-label','Tile '+v+(isCorrect(v,i)?', correctly placed':''));}
+      boardEl.appendChild(el);
+    });
+    if(animateMove&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches&&typeof Element.prototype.animate==='function'){
+      state.tiles.forEach(v=>{if(!v)return;const el=tileNodes.get(v),from=previous.get(v);if(!from)return;const to=el.getBoundingClientRect(),dx=from.left-to.left,dy=from.top-to.top;if(Math.abs(dx)+Math.abs(dy)>1)el.animate([{transform:'translate3d('+dx+'px,'+dy+'px,0)'},{transform:'translate3d(0,0,0)'}],{duration:310,easing:'cubic-bezier(.22,.82,.22,1)'});});
+    }
     updateProgress();
   }
   function celebrateRow(row) {
