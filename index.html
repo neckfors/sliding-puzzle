@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -631,48 +631,58 @@
           return;
         }
 
-        const swCode = `
-          const CACHE_NAME = 'shuffle-15-v1';
-          self.addEventListener('install', (event) => {
-            self.skipWaiting();
-            event.waitUntil(
-              caches.open(CACHE_NAME).then((cache) => {
-                return cache.addAll([self.location.href]).catch(() => {});
-              })
-            );
-          });
-          self.addEventListener('activate', (event) => {
-            event.waitUntil(self.clients.claim());
-          });
-          self.addEventListener('fetch', (event) => {
-            if (event.request.method !== 'GET') return;
-            event.respondWith(
-              caches.match(event.request).then((cached) => {
-                return cached || fetch(event.request).then((response) => {
-                  const copy = response.clone();
-                  caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
-                  return response;
-                }).catch(() => cached);
-              })
-            );
-          });
-        `;
+        const showUpdateBar = (worker) => {
+          if (document.getElementById('update-bar')) return;
+          const bar = document.createElement('div');
+          bar.id = 'update-bar';
+          bar.setAttribute('role', 'status');
+          bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:center;gap:12px;padding:calc(env(safe-area-inset-top,0px) + 8px) 12px 8px;background:var(--accent-primary);color:#fff;font-size:13px;font-weight:600;';
+          const msg = document.createElement('span');
+          msg.textContent = 'New version available';
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = 'Update';
+          btn.style.cssText = 'padding:4px 12px;border-radius:8px;background:#fff;color:#0f172a;font-weight:700;';
+          btn.onclick = () => worker.postMessage({ type: 'SKIP_WAITING' });
+          bar.append(msg, btn);
+          document.body.appendChild(bar);
+        };
 
         try {
-          const blob = new Blob([swCode], { type: 'application/javascript' });
-          const swUrl = URL.createObjectURL(blob);
-          const reg = await navigator.serviceWorker.register(swUrl);
+          const reg = await navigator.serviceWorker.register('sw.js');
           swState = 'active';
           statusDot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
           statusText.textContent = 'Offline Ready';
-          swDiag.textContent = 'Service Worker: Active & Caching';
-          console.info('Shuffle 15 SW registered:', reg.scope);
+
+          // Show the version of the running service worker.
+          const showVersion = () => {
+            const w = reg.active;
+            if (!w) return;
+            const ch = new MessageChannel();
+            ch.port1.onmessage = (e) => { swDiag.textContent = 'Version ' + e.data; };
+            w.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
+          };
+          showVersion();
+
+          // A new version waits until the user taps Update; then the page reloads once.
+          const watch = (w) => w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) showUpdateBar(w); });
+          if (reg.waiting && navigator.serviceWorker.controller) showUpdateBar(reg.waiting);
+          reg.addEventListener('updatefound', () => reg.installing && watch(reg.installing));
+          let reloading = false;
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (reloading || !document.getElementById('update-bar')) { showVersion(); return; }
+            reloading = true; location.reload();
+          });
+
+          // Look for a new version when the app returns to the screen and every 30 minutes.
+          const check = () => reg.update().catch(() => {});
+          document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+          setInterval(check, 30 * 60 * 1000);
         } catch (err) {
-          // Graceful handling for sandboxed iframes or blob: origin restrictions
-          swState = 'sandboxed';
+          swState = 'unavailable';
           statusDot.className = 'w-1.5 h-1.5 rounded-full bg-sky-400';
           statusText.textContent = 'PWA Ready';
-          swDiag.textContent = 'Service Worker: Sandboxed preview mode';
+          swDiag.textContent = 'Service Worker: unavailable';
         }
       }
 
