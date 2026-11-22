@@ -1,5 +1,5 @@
 // Service worker for Shuffle 15. Bump VERSION on every release: the page then shows "New version available".
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 const CACHE = 'shuffle-15-' + VERSION;
 const FILES = ['./', './index.html', './style.css', './game.js', './pwa.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 
