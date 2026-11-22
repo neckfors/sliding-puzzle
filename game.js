@@ -46,6 +46,47 @@
     boardEl.style.setProperty('--fs', Math.max(12, Math.round(w / n * (n > 4 ? 0.36 : 0.4))) + 'px');
   }
 
+  // Progress feedback: which tiles are home, which rows are complete.
+  var rowsDone = [];
+  function isOk(pos) { return pos === n * n - 1 ? cells[pos] === 0 : cells[pos] === pos + 1; }
+  function restart(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+  function refresh(anim) {
+    var ev = { tiles: 0, rows: [], ok: 0, rowCount: 0 }, r, c;
+    for (var pos = 0; pos < n * n; pos++) {
+      var num = cells[pos]; if (!num) continue;
+      var el = els[num], was = el.classList.contains('ok');
+      if (isOk(pos)) {
+        ev.ok++;
+        if (!was) { el.classList.add('ok'); if (anim) { ev.tiles++; restart(el, 'pop'); } }
+      } else el.classList.remove('ok');
+    }
+    for (r = 0; r < n; r++) {
+      var d = true;
+      for (c = 0; c < n; c++) if (!isOk(r * n + c)) { d = false; break; }
+      if (d) ev.rowCount++;
+      if (anim && d && !rowsDone[r]) ev.rows.push(r);
+      rowsDone[r] = d;
+    }
+    return ev;
+  }
+  function toast(txt) { var t = $('toast'); t.textContent = txt; t.classList.remove('show'); void t.offsetWidth; t.classList.add('show'); }
+  function sweep(r) {
+    for (var c = 0; c < n; c++) {
+      var num = cells[r * n + c]; if (!num) continue;
+      els[num].style.setProperty('--d', c * 70 + 'ms'); restart(els[num], 'flash');
+    }
+  }
+  function confetti() {
+    var cols = ['#f2b441', '#f6e7c6', '#4f7bd9', '#ff8a5c', '#7be0a4'];
+    for (var i = 0; i < 70; i++) {
+      var p = document.createElement('div'); p.className = 'cf';
+      p.style.left = Math.random() * 100 + 'vw'; p.style.background = cols[i % cols.length];
+      p.style.animationDuration = 1.6 + Math.random() * 1.6 + 's'; p.style.animationDelay = Math.random() * 0.5 + 's';
+      document.body.appendChild(p);
+      (function (x) { setTimeout(function () { x.remove(); }, 3800); })(p);
+    }
+  }
+
   function build() {
     slotsEl.innerHTML = ''; tilesEl.innerHTML = ''; els = {};
     var s = 100 / n + '%';
@@ -111,7 +152,9 @@
       cells[e] = cells[p]; cells[p] = 0; prev = e; e = p;
     }
     moves = 0; secs = 0; started = false; won = false; locked = false;
-    placeAll(); updateStats();
+    for (var q in els) els[q].classList.remove('ok', 'pop', 'flash');
+    rowsDone = [];
+    placeAll(); refresh(false); updateStats();
   }
 
   function startTimer() {
@@ -134,8 +177,16 @@
     }
     if (!started) startTimer();
     moves++; $('moves').textContent = moves;
-    beep(300 + Math.random() * 60, 0.06);
+    var ev = refresh(true);
     if (solved()) win();
+    else if (ev.rows.length) {
+      ev.rows.forEach(sweep);
+      toast(ev.rows.length > 1 ? 'ROWS DONE!' : 'ROW ' + (ev.rows[0] + 1) + ' DONE');
+      var b0 = 440 * (1 + 0.15 * ev.rowCount);
+      beep(b0, 0.18); setTimeout(function () { beep(b0 * 1.25, 0.18); }, 90); setTimeout(function () { beep(b0 * 1.5, 0.3); }, 180);
+    }
+    else if (ev.tiles) beep(380 + ev.ok * 28, 0.14);
+    else beep(260, 0.05);
     return true;
   }
 
@@ -156,14 +207,17 @@
     var nm = load('shuffle15_name', '');
     if (rec) { save('shuffle15_best_' + n, JSON.stringify({ moves: moves, time: secs, name: nm })); pendingRec = true; }
     updateStats();
-    beep(520, 0.12); setTimeout(function () { beep(660, 0.12); }, 130); setTimeout(function () { beep(880, 0.25); }, 260);
+    for (var pos = 0; pos < n * n - 1; pos++) { els[pos + 1].style.setProperty('--d', pos * 55 + 'ms'); restart(els[pos + 1], 'flash'); }
+    toast('SOLVED!');
+    [523, 659, 784, 1047, 1319].forEach(function (f, i) { setTimeout(function () { beep(f, 0.3); }, 150 + i * 140); });
+    setTimeout(confetti, 300);
     setTimeout(function () {
       $('winSub').textContent = n + '×' + n + ' board';
       $('rec').hidden = !rec;
       $('name').hidden = !rec; $('name').value = nm;
       $('winMoves').textContent = moves; $('winTime').textContent = fmt(secs);
       $('win').hidden = false;
-    }, 700);
+    }, 1900);
   }
 
   function setSize(s) {
