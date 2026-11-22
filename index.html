@@ -1,0 +1,1894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Shuffle 15 — Tactile Sliding Puzzle PWA</title>
+  <meta name="description" content="A sleek, tactile 15-puzzle sliding tile game built as an offline-capable Progressive Web App." />
+  <meta name="theme-color" content="#090d16" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Shuffle 15" />
+
+  <!-- Google Fonts: Inter & JetBrains Mono for crisp tabular numbers -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          boxShadow: {
+            'tactile-dark': '0 6px 0 0 rgba(2, 6, 23, 0.75), 0 10px 20px -5px rgba(0, 0, 0, 0.5)',
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* Custom CSS Variables for Dynamic Accent Themes */
+    :root {
+      --accent-primary: #6366f1;
+      --accent-secondary: #818cf8;
+      --accent-glow: rgba(99, 102, 241, 0.42);
+      --accent-solved-bg: rgba(99, 102, 241, 0.16);
+      --accent-solved-border: rgba(129, 140, 248, 0.85);
+      --accent-num-dark: #c7d2fe;
+      --gold-glow: rgba(251, 191, 36, 0.55);
+    }
+
+    [data-accent="emerald"] {
+      --accent-primary: #10b981;
+      --accent-secondary: #34d399;
+      --accent-glow: rgba(16, 185, 129, 0.42);
+      --accent-solved-bg: rgba(16, 185, 129, 0.16);
+      --accent-solved-border: rgba(52, 211, 153, 0.85);
+      --accent-num-dark: #a7f3d0;
+    }
+
+    [data-accent="rose"] {
+      --accent-primary: #f43f5e;
+      --accent-secondary: #fb7185;
+      --accent-glow: rgba(244, 63, 94, 0.42);
+      --accent-solved-bg: rgba(244, 63, 94, 0.16);
+      --accent-solved-border: rgba(251, 113, 133, 0.85);
+      --accent-num-dark: #fecdd3;
+    }
+
+    [data-accent="cyan"] {
+      --accent-primary: #06b6d4;
+      --accent-secondary: #22d3ee;
+      --accent-glow: rgba(6, 182, 212, 0.42);
+      --accent-solved-bg: rgba(6, 182, 212, 0.16);
+      --accent-solved-border: rgba(34, 211, 238, 0.85);
+      --accent-num-dark: #a5f3fc;
+    }
+
+    * {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    html, body {
+      overflow-x: hidden;
+      width: 100%;
+    }
+
+    body {
+      overscroll-behavior: none;
+      touch-action: manipulation;
+      font-variant-numeric: tabular-nums;
+      min-height: 100dvh;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    /* Smooth Hardware-Accelerated Spring Tile Transitions */
+    .puzzle-tile {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transition: transform 215ms cubic-bezier(0.22, 1.25, 0.36, 1);
+      will-change: transform;
+      cursor: pointer;
+      touch-action: none;
+      z-index: 10;
+    }
+
+    .puzzle-tile:active .tile-inner {
+      transform: translateY(2px) scale(0.96);
+    }
+
+    /* Jewel-like Tactile Tile Surface with Specular Top Bevel */
+    .tile-inner {
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(155deg, #1e293b 0%, #0f172a 100%);
+      box-shadow:
+        inset 0 1.5px 0 0 rgba(255, 255, 255, 0.16),
+        inset 0 -2px 5px 0 rgba(2, 6, 23, 0.65),
+        0 5px 0 0 rgba(2, 6, 23, 0.85),
+        0 10px 20px -4px rgba(0, 0, 0, 0.55);
+      transition: transform 140ms cubic-bezier(0.22, 1.25, 0.36, 1),
+                  background 260ms ease,
+                  border-color 260ms ease,
+                  box-shadow 260ms ease;
+    }
+
+    /* Expanding Ripple Ring when a tile locks into place */
+    .tile-ripple-ring {
+      position: absolute;
+      inset: -3px;
+      border-radius: inherit;
+      border: 2px solid var(--accent-secondary);
+      pointer-events: none;
+      animation: rippleRingOut 560ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes rippleRingOut {
+      0% { opacity: 0.9; transform: scale(0.96); }
+      100% { opacity: 0; transform: scale(1.18); }
+    }
+
+    /* 1. Individual Tile Lock-In State (Dot-Free, Razor-Sharp Contrast) */
+    .tile-solved .tile-inner {
+      border-color: var(--accent-solved-border) !important;
+      background: linear-gradient(155deg, rgba(36, 49, 71, 0.98) 0%, rgba(17, 24, 39, 0.98) 55%, var(--accent-solved-bg) 100%);
+      box-shadow:
+        inset 0 1.5px 0 0 rgba(255, 255, 255, 0.24),
+        inset 0 0 16px 0 var(--accent-solved-bg),
+        0 5px 0 0 rgba(2, 6, 23, 0.85),
+        0 0 24px -2px var(--accent-glow) !important;
+    }
+
+    .tile-solved .tile-num {
+      color: var(--accent-num-dark) !important;
+      text-shadow: 0 0 14px var(--accent-glow);
+    }
+
+    /* Micro-bounce spring when a tile locks into its solved slot */
+    @keyframes tileLockSpring {
+      0% { transform: scale(1); }
+      35% { transform: scale(1.1); }
+      68% { transform: scale(0.96); }
+      100% { transform: scale(1); }
+    }
+    .animate-tile-lock .tile-inner {
+      animation: tileLockSpring 380ms cubic-bezier(0.22, 1.35, 0.36, 1);
+    }
+
+    /* 2. Complete Row Solved State & Aurora Sweep (Unified Cohesive Row Glow) */
+    .tile-row-solved .tile-inner {
+      border-color: rgba(251, 191, 36, 0.82) !important;
+      background: linear-gradient(155deg, rgba(45, 42, 36, 0.98) 0%, rgba(24, 26, 36, 0.98) 60%, rgba(245, 158, 11, 0.22) 100%) !important;
+      box-shadow:
+        inset 0 1.5px 0 0 rgba(253, 224, 71, 0.35),
+        inset 0 0 18px 0 rgba(251, 191, 36, 0.16),
+        0 5px 0 0 rgba(2, 6, 23, 0.88),
+        0 0 24px -2px rgba(251, 191, 36, 0.4) !important;
+    }
+
+    .tile-row-solved .tile-num {
+      color: #fde68a !important;
+      text-shadow: 0 0 12px rgba(251, 191, 36, 0.45);
+    }
+
+    .tile-sheen {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        110deg,
+        transparent 20%,
+        rgba(255, 255, 255, 0.55) 48%,
+        rgba(251, 191, 36, 0.45) 54%,
+        transparent 80%
+      );
+      transform: translateX(-140%);
+      pointer-events: none;
+    }
+
+    @keyframes auroraSweep {
+      0% { transform: translateX(-140%); }
+      100% { transform: translateX(140%); }
+    }
+    .animate-row-sweep .tile-sheen {
+      animation: auroraSweep 650ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
+    }
+
+    @keyframes rowWaveBounce {
+      0% { transform: translateY(0) scale(1); }
+      40% { transform: translateY(-6px) scale(1.07); }
+      75% { transform: translateY(1px) scale(0.98); }
+      100% { transform: translateY(0) scale(1); }
+    }
+    .animate-row-wave .tile-inner {
+      animation: rowWaveBounce 460ms cubic-bezier(0.22, 1.35, 0.36, 1);
+    }
+
+    /* 3. Grand Victory Gem Transformation */
+    .tile-victory .tile-inner {
+      border-color: rgba(251, 191, 36, 0.92) !important;
+      background: linear-gradient(145deg, rgba(51, 41, 24, 0.98) 0%, rgba(30, 27, 22, 0.98) 65%, rgba(245, 158, 11, 0.28) 100%) !important;
+      box-shadow:
+        inset 0 1.5px 0 0 rgba(253, 224, 71, 0.45),
+        0 5px 0 0 rgba(2, 6, 23, 0.9),
+        0 0 30px rgba(251, 191, 36, 0.5) !important;
+    }
+    .tile-victory .tile-num {
+      color: #fde68a !important;
+      text-shadow: 0 0 14px rgba(251, 191, 36, 0.55);
+    }
+
+    /* Victory Emblem in Empty Slot */
+    @keyframes gemStarAppear {
+      0% { opacity: 0; transform: scale(0.3) rotate(-35deg); }
+      65% { opacity: 1; transform: scale(1.12) rotate(6deg); }
+      100% { opacity: 1; transform: scale(1) rotate(0deg); }
+    }
+    .victory-emblem {
+      animation: gemStarAppear 580ms cubic-bezier(0.22, 1.35, 0.36, 1) forwards;
+    }
+
+    /* Board Ambient Glow Pulse on Row Complete / Victory */
+    @keyframes boardGlowPulse {
+      0% { box-shadow: 0 0 0 0 var(--accent-glow); }
+      40% { box-shadow: 0 0 38px 6px var(--gold-glow); }
+      100% { box-shadow: 0 0 0 0 transparent; }
+    }
+    .board-celebrate-pulse {
+      animation: boardGlowPulse 750ms ease-out;
+    }
+
+    .accent-bg {
+      background-color: var(--accent-primary);
+    }
+
+    .accent-text {
+      color: var(--accent-primary);
+    }
+
+    /* Subtle Ambient Dark Background Mesh */
+    .bg-mesh-dark {
+      background-color: #090d16;
+      background-image:
+        radial-gradient(at 15% 15%, rgba(99, 102, 241, 0.16) 0px, transparent 50%),
+        radial-gradient(at 85% 80%, rgba(16, 185, 129, 0.11) 0px, transparent 50%);
+    }
+
+    /* Floating Toast Animation */
+    @keyframes toastFloat {
+      0% { opacity: 0; transform: translate(-50%, 10px) scale(0.9); }
+      15% { opacity: 1; transform: translate(-50%, 0) scale(1.03); }
+      25% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+      82% { opacity: 1; transform: translate(-50%, -2px) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -12px) scale(0.95); }
+    }
+    .animate-row-toast {
+      animation: toastFloat 1.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    /* Modal Backdrop Blur Animation */
+    @keyframes popIn {
+      0% { opacity: 0; transform: scale(0.92) translateY(10px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .animate-pop-in {
+      animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes badgePulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+    .animate-badge {
+      animation: badgePulse 2s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="dark bg-mesh-dark text-slate-100 flex flex-col justify-between antialiased selection:bg-indigo-500 selection:text-white" data-accent="indigo">
+
+  <!-- Confetti Canvas Overlay -->
+  <canvas id="confetti-canvas" class="fixed inset-0 pointer-events-none z-50"></canvas>
+
+  <!-- Top Navigation / PWA Bar -->
+  <header class="w-full max-w-2xl mx-auto px-3 sm:px-4 pt-2.5 sm:pt-4 pb-1 sm:pb-2 flex items-center justify-between gap-2">
+    <!-- Brand & PWA Status -->
+    <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+      <div id="brand-logo" class="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-xl accent-bg flex items-center justify-center text-white font-extrabold text-base sm:text-lg shadow-lg shadow-indigo-500/25 transition-colors duration-300">
+        15
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5 sm:gap-2">
+          <h1 class="font-extrabold text-base sm:text-xl tracking-tight leading-none truncate">Shuffle 15</h1>
+          <span id="pwa-status-badge" title="Progressive Web App Status" class="inline-flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-semibold bg-slate-800/90 text-slate-300 border border-slate-700/70 shrink-0">
+            <span id="pwa-status-dot" class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span id="pwa-status-text">PWA</span>
+          </span>
+        </div>
+        <p class="text-xs text-slate-400 mt-0.5 hidden sm:block">Tactile Sliding Puzzle</p>
+      </div>
+    </div>
+
+    <!-- Action Controls: Install PWA & Sound -->
+    <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+      <!-- PWA Install Button -->
+      <button id="install-pwa-btn" type="button" class="flex items-center justify-center gap-1.5 h-10 sm:h-auto px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800/90 hover:bg-slate-700/90 text-slate-100 border border-slate-700/80 shadow-sm transition-all active:scale-95" title="Install App to Device">
+        <svg class="w-4 h-4 accent-text shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3" />
+        </svg>
+        <span id="install-btn-label" class="hidden min-[360px]:inline">Install</span>
+      </button>
+
+      <!-- Sound Toggle -->
+      <button id="sound-toggle-btn" type="button" class="w-10 h-10 sm:w-auto sm:h-auto sm:p-2.5 flex items-center justify-center rounded-xl bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 shadow-sm transition-all active:scale-95" aria-label="Toggle Sound Effects" title="Toggle Sound Effects">
+        <svg id="icon-sound-on" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14" />
+        </svg>
+        <svg id="icon-sound-off" class="w-4 h-4 hidden text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6" />
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Game Container -->
+  <main class="w-full max-w-lg mx-auto px-3 sm:px-4 py-1 sm:py-2 flex-1 flex flex-col justify-center gap-2.5 sm:gap-4">
+
+    <!-- Difficulty / Grid Size & Color Accent Bar -->
+    <div class="flex items-center justify-between gap-2 bg-slate-900/75 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl border border-slate-800 shadow-sm">
+      <!-- Grid Size Segmented Control -->
+      <div class="flex items-center bg-slate-950/80 p-1 rounded-xl" role="group" aria-label="Grid Size">
+        <button type="button" data-size="3" class="size-btn min-h-[36px] sm:min-h-0 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white">
+          3×3 <span class="hidden sm:inline font-normal opacity-75">Easy</span>
+        </button>
+        <button type="button" data-size="4" class="size-btn min-h-[36px] sm:min-h-0 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-slate-800 text-white shadow-sm">
+          4×4 <span class="hidden sm:inline font-normal opacity-75">Classic</span>
+        </button>
+        <button type="button" data-size="5" class="size-btn min-h-[36px] sm:min-h-0 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white">
+          5×5 <span class="hidden sm:inline font-normal opacity-75">Hard</span>
+        </button>
+      </div>
+
+      <!-- Accent Color Picker Swatches (Indigo, Emerald, Cyan, Rose) -->
+      <div class="flex items-center gap-2 sm:gap-2 pr-1.5" role="group" aria-label="Tile Accent Color">
+        <button type="button" data-color="indigo" class="accent-dot w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-indigo-500 ring-offset-slate-900 transition-transform hover:scale-110 active:scale-95" title="Indigo Accent" aria-label="Indigo Accent"></button>
+        <button type="button" data-color="emerald" class="accent-dot w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-emerald-500 opacity-70 hover:opacity-100 transition-transform hover:scale-110 active:scale-95" title="Emerald Accent" aria-label="Emerald Accent"></button>
+        <button type="button" data-color="cyan" class="accent-dot w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-cyan-500 opacity-70 hover:opacity-100 transition-transform hover:scale-110 active:scale-95" title="Cyan Accent" aria-label="Cyan Accent"></button>
+        <button type="button" data-color="rose" class="accent-dot w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-rose-500 opacity-70 hover:opacity-100 transition-transform hover:scale-110 active:scale-95" title="Rose Accent" aria-label="Rose Accent"></button>
+      </div>
+    </div>
+
+    <!-- Telemetry & Best Records Strip -->
+    <div class="grid grid-cols-3 gap-2 sm:gap-2.5">
+      <!-- Moves -->
+      <div class="bg-slate-900/75 backdrop-blur-md px-2.5 sm:px-3.5 py-2 sm:py-2.5 rounded-2xl border border-slate-800 flex flex-col justify-between min-w-0">
+        <span class="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-500">Moves</span>
+        <div class="flex items-baseline justify-between gap-1 mt-0.5">
+          <span id="move-count" class="font-mono text-[clamp(1.1rem,4.8vw,1.5rem)] font-bold tracking-tight leading-none">0</span>
+          <span id="best-moves-badge" class="text-[10px] sm:text-[11px] font-mono text-slate-500 truncate" title="Best Moves">--</span>
+        </div>
+      </div>
+
+      <!-- Time -->
+      <div class="bg-slate-900/75 backdrop-blur-md px-2.5 sm:px-3.5 py-2 sm:py-2.5 rounded-2xl border border-slate-800 flex flex-col justify-between min-w-0">
+        <span class="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-500">Time</span>
+        <div class="flex items-baseline justify-between gap-1 mt-0.5">
+          <span id="timer-display" class="font-mono text-[clamp(1.1rem,4.8vw,1.5rem)] font-bold tracking-tight leading-none">00:00</span>
+          <span id="best-time-badge" class="text-[10px] sm:text-[11px] font-mono text-slate-500 truncate" title="Best Time">--</span>
+        </div>
+      </div>
+
+      <!-- Shuffle / New Game CTA -->
+      <button id="shuffle-btn" type="button" class="accent-bg hover:brightness-110 active:scale-[0.97] text-white rounded-2xl px-2.5 sm:px-3 py-2 sm:py-2.5 min-h-[48px] flex flex-col items-center justify-center gap-0.5 sm:gap-1 shadow-lg shadow-indigo-500/20 transition-all cursor-pointer">
+        <svg id="shuffle-icon" class="w-4 h-4 sm:w-5 sm:h-5 transition-transform duration-300" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        <span class="text-[11px] sm:text-xs font-bold tracking-wide uppercase">Shuffle</span>
+      </button>
+    </div>
+
+    <!-- Tactile Puzzle Board Well (Responsive to both mobile width & viewport height) -->
+    <div class="relative aspect-square mx-auto" style="width: min(92vw, 430px, 52dvh);">
+      <!-- Floating Row Solved Toast Badge -->
+      <div id="row-toast-container" class="pointer-events-none absolute -top-3 left-1/2 z-30"></div>
+
+      <div id="board-well" class="w-full h-full rounded-3xl p-2 sm:p-3.5 bg-slate-950/95 border border-slate-800/90 shadow-xl relative overflow-hidden transition-shadow duration-300">
+        <!-- Empty Slot Grid Recesses (rendered dynamically) -->
+        <div id="grid-recesses" class="w-full h-full grid gap-1.5 sm:gap-2.5 pointer-events-none"></div>
+
+        <!-- Interactive Sliding Tiles Layer -->
+        <div id="tiles-layer" class="absolute inset-2 sm:inset-3.5"></div>
+
+        <!-- Board-Local Particle Sparkle Canvas (for Tile Lock-ins & Row Sweeps) -->
+        <canvas id="board-fx-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-30"></canvas>
+      </div>
+    </div>
+
+    <!-- Subtle Controls Legend -->
+    <div class="flex items-center justify-between text-[11px] sm:text-xs text-slate-400 px-1">
+      <div class="flex items-center gap-2">
+        <span class="inline-block w-3 h-3 sm:w-3.5 sm:h-3.5 rounded border border-indigo-400/80 bg-indigo-500/20 shrink-0"></span>
+        <span>Highlighted tiles are in place</span>
+      </div>
+      <div class="hidden sm:flex items-center gap-1.5">
+        <kbd class="px-1.5 py-0.5 text-[10px] font-mono bg-slate-800 border border-slate-700 rounded">WASD</kbd>
+        <span>or</span>
+        <kbd class="px-1.5 py-0.5 text-[10px] font-mono bg-slate-800 border border-slate-700 rounded">Arrows</kbd>
+      </div>
+      <div class="sm:hidden">Swipe or tap</div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="w-full max-w-lg mx-auto px-3 sm:px-4 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] text-slate-500">
+    <span id="offline-indicator">Offline-ready PWA &bull; 100% Solvable Parity Engine</span>
+  </footer>
+
+  <!-- Victory Celebration Modal -->
+  <div id="win-modal" class="fixed inset-0 z-40 hidden items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm">
+    <div class="animate-pop-in w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-800 p-6 shadow-2xl text-center relative overflow-hidden">
+      <!-- Top Decorative Glow -->
+      <div class="absolute -top-20 left-1/2 -translate-x-1/2 w-56 h-56 rounded-full accent-bg opacity-20 blur-3xl pointer-events-none"></div>
+
+      <div class="w-16 h-16 mx-auto rounded-2xl accent-bg text-white flex items-center justify-center shadow-lg mb-4">
+        <svg class="w-9 h-9" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+        </svg>
+      </div>
+
+      <div id="new-record-badge" class="hidden inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-500 border border-amber-500/30 mb-2 animate-badge">
+        ★ New Personal Best!
+      </div>
+
+      <h2 class="text-2xl font-extrabold tracking-tight">Puzzle Solved!</h2>
+      <p id="win-subtitle" class="text-xs text-slate-400 mt-1">4×4 Classic Mode Completed</p>
+
+      <div class="grid grid-cols-2 gap-3 my-5">
+        <div class="p-3 rounded-2xl bg-slate-800/80 border border-slate-700/70">
+          <div class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Total Moves</div>
+          <div id="win-moves" class="font-mono text-2xl font-extrabold mt-0.5">0</div>
+        </div>
+        <div class="p-3 rounded-2xl bg-slate-800/80 border border-slate-700/70">
+          <div class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Final Time</div>
+          <div id="win-time" class="font-mono text-2xl font-extrabold mt-0.5">00:00</div>
+        </div>
+      </div>
+
+      <div class="flex gap-2.5">
+        <button id="win-close-btn" type="button" class="flex-1 py-3 px-4 rounded-xl font-semibold text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors">
+          Inspect Board
+        </button>
+        <button id="play-again-btn" type="button" class="flex-1 py-3 px-4 rounded-xl font-bold text-sm accent-bg text-white hover:brightness-110 shadow-lg transition-all active:scale-95">
+          Play Again
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PWA Install Guide Modal (Fallback when native prompt isn't available e.g. iOS Safari or Sandboxed Iframe) -->
+  <div id="pwa-modal" class="fixed inset-0 z-40 hidden items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm">
+    <div class="animate-pop-in w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 p-6 shadow-2xl">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl accent-bg text-white flex items-center justify-center font-bold">15</div>
+          <div>
+            <h3 class="font-bold text-base">Install Shuffle 15</h3>
+            <p class="text-xs text-slate-400">Play offline anytime in standalone mode</p>
+          </div>
+        </div>
+        <button id="pwa-modal-close" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-white">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div id="pwa-instructions-body" class="space-y-3 text-sm text-slate-300">
+        <!-- Populated dynamically based on platform & SW status -->
+      </div>
+
+      <div class="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-500">
+        <span id="sw-diagnostic-text">Service Worker: Checking...</span>
+        <button id="pwa-modal-ok" type="button" class="px-4 py-2 rounded-xl accent-bg text-white font-semibold">Got it</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * ============================================================================
+     * 1. PROGRESSIVE WEB APP (PWA) BOOTSTRAPPER
+     *    - Dynamically generates 192x192 & 512x512 crisp app icons via Canvas
+     *    - Injects a valid Web App Manifest via Blob URL
+     *    - Registers an inline Blob Service Worker for offline caching
+     *    - Captures `beforeinstallprompt` for native one-click installation
+     * ============================================================================
+     */
+    const PWAManager = (() => {
+      let deferredPrompt = null;
+      let swState = 'initializing';
+
+      function generateIconDataURL(size) {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        // Rounded gradient background
+        const radius = size * 0.22;
+        const grad = ctx.createLinearGradient(0, 0, size, size);
+        grad.addColorStop(0, '#6366f1');
+        grad.addColorStop(1, '#312e81');
+
+        ctx.beginPath();
+        ctx.roundRect(0, 0, size, size, radius);
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Subtle inner grid motif (2x2 tiles representing 15 puzzle)
+        const pad = size * 0.16;
+        const gap = size * 0.05;
+        const tileSize = (size - pad * 2 - gap) / 2;
+
+        const tiles = [
+          { r: 0, c: 0, label: '15', active: true },
+          { r: 0, c: 1, label: '14', active: false },
+          { r: 1, c: 0, label: '11', active: false },
+        ];
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        tiles.forEach(t => {
+          const x = pad + t.c * (tileSize + gap);
+          const y = pad + t.r * (tileSize + gap);
+
+          ctx.beginPath();
+          ctx.roundRect(x, y, tileSize, tileSize, size * 0.06);
+          ctx.fillStyle = t.active ? '#ffffff' : 'rgba(255, 255, 255, 0.22)';
+          ctx.fill();
+
+          ctx.fillStyle = t.active ? '#1e1b4b' : '#ffffff';
+          ctx.font = `800 ${Math.round(tileSize * 0.46)}px Inter, system-ui, sans-serif`;
+          ctx.fillText(t.label, x + tileSize / 2, y + tileSize / 2 + size * 0.015);
+        });
+
+        // Empty bottom-right slot recess
+        const ex = pad + (tileSize + gap);
+        const ey = pad + (tileSize + gap);
+        ctx.beginPath();
+        ctx.roundRect(ex, ey, tileSize, tileSize, size * 0.06);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.lineWidth = Math.max(2, size * 0.015);
+        ctx.setLineDash([size * 0.03, size * 0.02]);
+        ctx.stroke();
+
+        return canvas.toDataURL('image/png');
+      }
+
+      function injectManifest() {
+        try {
+          const icon192 = generateIconDataURL(192);
+          const icon512 = generateIconDataURL(512);
+
+          // Set Apple touch icon dynamically too
+          const appleLink = document.createElement('link');
+          appleLink.rel = 'apple-touch-icon';
+          appleLink.href = icon192;
+          document.head.appendChild(appleLink);
+
+          const manifest = {
+            name: 'Shuffle 15 — Sliding Tile Puzzle',
+            short_name: 'Shuffle 15',
+            description: 'A sleek, modern, offline-capable 15-puzzle sliding tile game.',
+            start_url: window.location.href,
+            display: 'standalone',
+            orientation: 'portrait',
+            background_color: '#090d16',
+            theme_color: '#090d16',
+            categories: ['games', 'puzzle'],
+            icons: [
+              { src: icon192, sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+              { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+            ]
+          };
+
+          const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+          const manifestURL = URL.createObjectURL(blob);
+
+          const linkEl = document.createElement('link');
+          linkEl.rel = 'manifest';
+          linkEl.href = manifestURL;
+          document.head.appendChild(linkEl);
+        } catch (err) {
+          console.warn('Manifest generation fallback:', err);
+        }
+      }
+
+      async function registerServiceWorker() {
+        const statusDot = document.getElementById('pwa-status-dot');
+        const statusText = document.getElementById('pwa-status-text');
+        const swDiag = document.getElementById('sw-diagnostic-text');
+
+        if (!('serviceWorker' in navigator)) {
+          swState = 'unsupported';
+          statusDot.className = 'w-1.5 h-1.5 rounded-full bg-amber-400';
+          statusText.textContent = 'Web App';
+          swDiag.textContent = 'Service Worker: Browser unsupported';
+          return;
+        }
+
+        const swCode = `
+          const CACHE_NAME = 'shuffle-15-v1';
+          self.addEventListener('install', (event) => {
+            self.skipWaiting();
+            event.waitUntil(
+              caches.open(CACHE_NAME).then((cache) => {
+                return cache.addAll([self.location.href]).catch(() => {});
+              })
+            );
+          });
+          self.addEventListener('activate', (event) => {
+            event.waitUntil(self.clients.claim());
+          });
+          self.addEventListener('fetch', (event) => {
+            if (event.request.method !== 'GET') return;
+            event.respondWith(
+              caches.match(event.request).then((cached) => {
+                return cached || fetch(event.request).then((response) => {
+                  const copy = response.clone();
+                  caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
+                  return response;
+                }).catch(() => cached);
+              })
+            );
+          });
+        `;
+
+        try {
+          const blob = new Blob([swCode], { type: 'application/javascript' });
+          const swUrl = URL.createObjectURL(blob);
+          const reg = await navigator.serviceWorker.register(swUrl);
+          swState = 'active';
+          statusDot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
+          statusText.textContent = 'Offline Ready';
+          swDiag.textContent = 'Service Worker: Active & Caching';
+          console.info('Shuffle 15 SW registered:', reg.scope);
+        } catch (err) {
+          // Graceful handling for sandboxed iframes or blob: origin restrictions
+          swState = 'sandboxed';
+          statusDot.className = 'w-1.5 h-1.5 rounded-full bg-sky-400';
+          statusText.textContent = 'PWA Ready';
+          swDiag.textContent = 'Service Worker: Sandboxed preview mode';
+        }
+      }
+
+      function init() {
+        injectManifest();
+        registerServiceWorker();
+
+        const installBtn = document.getElementById('install-pwa-btn');
+        const installLabel = document.getElementById('install-btn-label');
+
+        // Detect if already running in standalone installed mode
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        if (isStandalone) {
+          installLabel.textContent = 'Installed';
+          document.getElementById('pwa-status-text').textContent = 'Standalone';
+        }
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+          e.preventDefault();
+          deferredPrompt = e;
+          installLabel.textContent = 'Install App';
+          installBtn.classList.add('ring-2', 'ring-indigo-500/50');
+        });
+
+        window.addEventListener('appinstalled', () => {
+          deferredPrompt = null;
+          installLabel.textContent = 'Installed';
+          document.getElementById('pwa-status-text').textContent = 'Installed';
+        });
+
+        installBtn.addEventListener('click', async () => {
+          if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+              deferredPrompt = null;
+              installLabel.textContent = 'Installed';
+            }
+          } else {
+            showInstallInstructions();
+          }
+        });
+
+        // Online/Offline network listener
+        const updateNetworkStatus = () => {
+          const footerText = document.getElementById('offline-indicator');
+          if (!navigator.onLine) {
+            footerText.textContent = 'Playing Offline • Local Storage Active';
+          } else {
+            footerText.textContent = 'Offline-ready PWA • 100% Solvable Parity Engine';
+          }
+        };
+        window.addEventListener('online', updateNetworkStatus);
+        window.addEventListener('offline', updateNetworkStatus);
+      }
+
+      function showInstallInstructions() {
+        const modal = document.getElementById('pwa-modal');
+        const body = document.getElementById('pwa-instructions-body');
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+        if (isStandalone) {
+          body.innerHTML = `
+            <div class="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs leading-relaxed">
+              <strong>Shuffle 15 is already installed!</strong> You are currently running the standalone Progressive Web App experience.
+            </div>
+          `;
+        } else if (isIOS) {
+          body.innerHTML = `
+            <p class="text-xs text-slate-400">To install Shuffle 15 on your iPhone or iPad:</p>
+            <ol class="list-decimal list-inside space-y-2 text-xs bg-slate-800/80 p-3.5 rounded-2xl">
+              <li>Tap the <strong>Share</strong> icon in Safari's bottom toolbar.</li>
+              <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+              <li>Tap <strong>Add</strong> in the top-right corner to launch fullscreen.</li>
+            </ol>
+          `;
+        } else {
+          body.innerHTML = `
+            <p class="text-xs text-slate-400">Install this app directly to your device for instant offline access:</p>
+            <ol class="list-decimal list-inside space-y-2 text-xs bg-slate-800/80 p-3.5 rounded-2xl">
+              <li>Open your browser menu (<strong>⋮</strong> or <strong>⋯</strong>) or look for the <strong>Install icon</strong> in the address bar.</li>
+              <li>Select <strong>Install Shuffle 15</strong> or <strong>Add to Home Screen</strong>.</li>
+              <li>Note: If viewing inside an embedded preview frame, open the page in its own browser tab to trigger the native install prompt.</li>
+            </ol>
+          `;
+        }
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+
+      return { init };
+    })();
+
+
+    /**
+     * ============================================================================
+     * 2. WEB AUDIO SYNTHESIZER (Zero External Audio Dependencies)
+     *    - Tactile mechanical tile slide click
+     *    - Crystalline harmonic overtone ping when a tile locks into its solved slot
+     *    - Ascending 4-note Major-9th arpeggio chime when an entire row is solved
+     *    - Lush polyphonic victory fanfare chord progression on full board completion
+     * ============================================================================
+     */
+    const SoundFX = (() => {
+      let ctx = null;
+      let enabled = true;
+
+      function getContext() {
+        if (!ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) ctx = new AudioCtx();
+        }
+        if (ctx && ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+        return ctx;
+      }
+
+      function setEnabled(val) {
+        enabled = val;
+      }
+
+      function isEnabled() {
+        return enabled;
+      }
+
+      function playSlide(count = 1, newlyLockedCount = 0) {
+        if (!enabled) return;
+        const audio = getContext();
+        if (!audio) return;
+
+        const now = audio.currentTime;
+
+        // Mechanical tactile click
+        const osc = audio.createOscillator();
+        const gain = audio.createGain();
+        osc.type = 'triangle';
+        const baseFreq = 240 + Math.min(count, 4) * 35;
+        osc.frequency.setValueAtTime(baseFreq, now);
+        osc.frequency.exponentialRampToValueAtTime(85, now + 0.065);
+
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+
+        osc.connect(gain);
+        gain.connect(audio.destination);
+        osc.start(now);
+        osc.stop(now + 0.075);
+
+        // Crisp crystalline bell overtone when tile(s) lock into solved slot
+        if (newlyLockedCount > 0) {
+          const partials = [1046.5, 1567.98]; // C6 + G6 fifth harmonic shimmer
+          partials.forEach((freq, idx) => {
+            const chime = audio.createOscillator();
+            const cGain = audio.createGain();
+            chime.type = 'sine';
+            const start = now + 0.025 + idx * 0.02;
+            chime.frequency.setValueAtTime(freq, start);
+            chime.frequency.exponentialRampToValueAtTime(freq * 1.015, start + 0.22);
+
+            cGain.gain.setValueAtTime(0.001, start);
+            cGain.gain.linearRampToValueAtTime(idx === 0 ? 0.085 : 0.045, start + 0.015);
+            cGain.gain.exponentialRampToValueAtTime(0.0008, start + 0.28);
+
+            chime.connect(cGain);
+            cGain.connect(audio.destination);
+            chime.start(start);
+            chime.stop(start + 0.3);
+          });
+        }
+      }
+
+      // Ascending 4-note Major-9th arpeggio scaled higher per row index
+      function playRowComplete(rowIndex = 0) {
+        if (!enabled) return;
+        const audio = getContext();
+        if (!audio) return;
+
+        const now = audio.currentTime;
+        // Pitch multiplier increases as user progresses down the board (Row 0 -> Row 3)
+        const pitchShift = Math.pow(1.12246, rowIndex); // +2 semitones per row
+        const baseArp = [523.25, 659.25, 783.99, 1174.66]; // C5, E5, G5, D6 (Major 9th)
+
+        baseArp.forEach((rawFreq, i) => {
+          const freq = rawFreq * pitchShift;
+          const start = now + i * 0.055;
+
+          const osc = audio.createOscillator();
+          const sub = audio.createOscillator();
+          const gain = audio.createGain();
+
+          osc.type = 'sine';
+          sub.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, start);
+          sub.frequency.setValueAtTime(freq * 2, start); // Octave sparkle
+
+          gain.gain.setValueAtTime(0.001, start);
+          gain.gain.linearRampToValueAtTime(0.11, start + 0.018);
+          gain.gain.exponentialRampToValueAtTime(0.0008, start + 0.45);
+
+          const subGain = audio.createGain();
+          subGain.gain.setValueAtTime(0.025, start);
+          subGain.gain.exponentialRampToValueAtTime(0.0005, start + 0.25);
+
+          osc.connect(gain);
+          sub.connect(subGain);
+          gain.connect(audio.destination);
+          subGain.connect(audio.destination);
+
+          osc.start(start);
+          sub.start(start);
+          osc.stop(start + 0.48);
+          sub.stop(start + 0.28);
+        });
+      }
+
+      // Lush multi-voice triumphant fanfare progression on full puzzle completion
+      function playWin() {
+        if (!enabled) return;
+        const audio = getContext();
+        if (!audio) return;
+
+        const now = audio.currentTime;
+        // Rising arpeggio + warm sustained major chord bloom
+        const leadNotes = [
+          { freq: 523.25, t: 0.00, dur: 0.35 }, // C5
+          { freq: 659.25, t: 0.07, dur: 0.35 }, // E5
+          { freq: 783.99, t: 0.14, dur: 0.35 }, // G5
+          { freq: 1046.50, t: 0.21, dur: 0.75 }, // C6
+          { freq: 1318.51, t: 0.30, dur: 0.85 }, // E6
+          { freq: 1567.98, t: 0.39, dur: 1.05 }  // G6
+        ];
+
+        leadNotes.forEach(n => {
+          const osc = audio.createOscillator();
+          const shimmer = audio.createOscillator();
+          const gain = audio.createGain();
+
+          osc.type = 'triangle';
+          shimmer.type = 'sine';
+          osc.frequency.setValueAtTime(n.freq, now + n.t);
+          shimmer.frequency.setValueAtTime(n.freq * 1.003, now + n.t); // Slight chorus detune
+
+          gain.gain.setValueAtTime(0.001, now + n.t);
+          gain.gain.linearRampToValueAtTime(0.11, now + n.t + 0.025);
+          gain.gain.exponentialRampToValueAtTime(0.0008, now + n.t + n.dur);
+
+          osc.connect(gain);
+          shimmer.connect(gain);
+          gain.connect(audio.destination);
+
+          osc.start(now + n.t);
+          shimmer.start(now + n.t);
+          osc.stop(now + n.t + n.dur + 0.05);
+          shimmer.stop(now + n.t + n.dur + 0.05);
+        });
+      }
+
+      return { playSlide, playRowComplete, playWin, setEnabled, isEnabled };
+    })();
+
+
+    /**
+     * ============================================================================
+     * 3. PARTICLE & FIREWORKS CELEBRATION ENGINES
+     *    - BoardFX: Local micro-sparkles for individual tile lock-ins & row sweeps
+     *    - Confetti: Full-screen multi-stage fireworks & confetti for Grand Victory
+     * ============================================================================
+     */
+    const BoardFX = (() => {
+      const canvas = document.getElementById('board-fx-canvas');
+      const ctx = canvas.getContext('2d');
+      let sparks = [];
+      let rafId = null;
+
+      function syncSize() {
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width && rect.height) {
+          canvas.width = rect.width * window.devicePixelRatio;
+          canvas.height = rect.height * window.devicePixelRatio;
+          ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+        }
+      }
+
+      function emitTileSparkle(cx, cy, color = '#818cf8') {
+        syncSize();
+        for (let i = 0; i < 14; i++) {
+          const angle = (Math.PI * 2 * i) / 14 + (Math.random() - 0.5) * 0.3;
+          const speed = 1.4 + Math.random() * 2.4;
+          sparks.push({
+            x: cx,
+            y: cy,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            size: 2 + Math.random() * 2.5,
+            color: i % 2 === 0 ? color : '#ffffff',
+            alpha: 1,
+            decay: 0.032 + Math.random() * 0.015
+          });
+        }
+        startLoop();
+      }
+
+      function emitRowSweep(yCenter, boardWidth) {
+        syncSize();
+        const goldPalette = ['#fbbf24', '#fde68a', '#34d399', '#ffffff'];
+        for (let i = 0; i < 38; i++) {
+          const x = (boardWidth * i) / 38 + (Math.random() - 0.5) * 12;
+          sparks.push({
+            x,
+            y: yCenter + (Math.random() - 0.5) * 26,
+            vx: (Math.random() - 0.5) * 2.2,
+            vy: -0.8 - Math.random() * 2.4,
+            size: 2.2 + Math.random() * 3,
+            color: goldPalette[i % goldPalette.length],
+            alpha: 1,
+            decay: 0.022 + Math.random() * 0.012
+          });
+        }
+        startLoop();
+      }
+
+      function startLoop() {
+        if (!rafId) animate();
+      }
+
+      function animate() {
+        const rect = canvas.getBoundingClientRect();
+        ctx.clearRect(0, 0, rect.width, rect.height);
+
+        sparks.forEach(s => {
+          s.x += s.vx;
+          s.y += s.vy;
+          s.vy += 0.04;
+          s.alpha -= s.decay;
+        });
+
+        sparks = sparks.filter(s => s.alpha > 0);
+
+        sparks.forEach(s => {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, s.alpha);
+          ctx.fillStyle = s.color;
+          ctx.shadowColor = s.color;
+          ctx.shadowBlur = 6;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+
+        if (sparks.length > 0) {
+          rafId = requestAnimationFrame(animate);
+        } else {
+          ctx.clearRect(0, 0, rect.width, rect.height);
+          rafId = null;
+        }
+      }
+
+      window.addEventListener('resize', syncSize);
+      return { emitTileSparkle, emitRowSweep };
+    })();
+
+    const Confetti = (() => {
+      const canvas = document.getElementById('confetti-canvas');
+      const ctx = canvas.getContext('2d');
+      let particles = [];
+      let animId = null;
+
+      function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+
+      function spawnWave(originX, originY, count = 85, spread = 16) {
+        const colors = ['#fbbf24', '#6366f1', '#10b981', '#f43f5e', '#06b6d4', '#fde68a', '#a855f7'];
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const velocity = (0.35 + Math.random() * 0.75) * spread;
+          particles.push({
+            x: originX + (Math.random() - 0.5) * 60,
+            y: originY + (Math.random() - 0.5) * 40,
+            vx: Math.cos(angle) * velocity,
+            vy: Math.sin(angle) * velocity - 4.5,
+            size: Math.random() * 7.5 + 4,
+            shape: Math.random() > 0.35 ? 'rect' : 'circle',
+            color: colors[Math.floor(Math.random() * colors.length)],
+            rotation: Math.random() * 360,
+            vRot: (Math.random() - 0.5) * 15,
+            gravity: 0.32,
+            drag: 0.982,
+            alpha: 1
+          });
+        }
+      }
+
+      // Multi-stage celebratory fireworks & confetti show
+      function burst() {
+        resize();
+        particles = [];
+
+        // Center primary burst
+        spawnWave(canvas.width * 0.5, canvas.height * 0.44, 110, 17);
+        if (animId) cancelAnimationFrame(animId);
+        animate();
+
+        // Left & Right secondary firework bursts
+        setTimeout(() => {
+          spawnWave(canvas.width * 0.25, canvas.height * 0.35, 65, 14);
+          if (!animId) animate();
+        }, 240);
+
+        setTimeout(() => {
+          spawnWave(canvas.width * 0.75, canvas.height * 0.35, 65, 14);
+          if (!animId) animate();
+        }, 440);
+      }
+
+      function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        let alive = 0;
+
+        particles.forEach(p => {
+          p.vx *= p.drag;
+          p.vy = p.vy * p.drag + p.gravity;
+          p.x += p.vx;
+          p.y += p.vy;
+          p.rotation += p.vRot;
+          if (p.y > canvas.height * 0.78) p.alpha -= 0.022;
+
+          if (p.alpha > 0) {
+            alive++;
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, p.alpha);
+            ctx.translate(p.x, p.y);
+            ctx.rotate((p.rotation * Math.PI) / 180);
+            ctx.fillStyle = p.color;
+            if (p.shape === 'circle') {
+              ctx.beginPath();
+              ctx.arc(0, 0, p.size * 0.48, 0, Math.PI * 2);
+              ctx.fill();
+            } else {
+              ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.58);
+            }
+            ctx.restore();
+          }
+        });
+
+        if (alive > 0) {
+          animId = requestAnimationFrame(animate);
+        } else {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          animId = null;
+        }
+      }
+
+      window.addEventListener('resize', resize);
+      return { burst };
+    })();
+
+
+    /**
+     * ============================================================================
+     * 4. CORE SHUFFLE 15 GAME ENGINE
+     *    - Supports 3x3, 4x4, 5x5 grids
+     *    - 100% Solvable Parity Verification + Random Walk Shuffle
+     *    - Multi-tier Milestone Tracking:
+     *        1) Individual Tile Lock-in (spring bounce + ripple ring + sparkles)
+     *        2) Complete Row Solved (sequential wave + aurora sweep + arpeggio + toast)
+     *        3) Grand Victory Finale (diagonal gem wave + empty slot emblem + fireworks)
+     * ============================================================================
+     */
+    class ShuffleGame {
+      constructor() {
+        this.size = 4; // Default 4x4 (15-puzzle)
+        this.board = []; // Flat array of length size*size, 0 = empty slot
+        this.tileElements = new Map(); // tileValue -> DOM element
+        this.solvedTilesSet = new Set(); // Tracks tiles currently in their solved slot
+        this.solvedRowsSet = new Set(); // Tracks rows (0..n-1) currently completely solved
+        this.moves = 0;
+        this.seconds = 0;
+        this.timerInterval = null;
+        this.isPlaying = false;
+        this.isSolved = false;
+
+        // DOM references
+        this.boardWellEl = document.getElementById('board-well');
+        this.recessesEl = document.getElementById('grid-recesses');
+        this.tilesLayerEl = document.getElementById('tiles-layer');
+        this.rowToastContainerEl = document.getElementById('row-toast-container');
+        this.moveCountEl = document.getElementById('move-count');
+        this.timerEl = document.getElementById('timer-display');
+        this.bestMovesEl = document.getElementById('best-moves-badge');
+        this.bestTimeEl = document.getElementById('best-time-badge');
+
+        this.loadPreferences();
+        this.bindEvents();
+        this.initGame(this.size);
+      }
+
+      loadPreferences() {
+        try {
+          const allowedAccents = ['indigo', 'emerald', 'cyan', 'rose'];
+          const rawAccent = localStorage.getItem('shuffle15_accent') || 'indigo';
+          const savedAccent = allowedAccents.includes(rawAccent) ? rawAccent : 'indigo';
+          this.setAccent(savedAccent, false);
+
+          const savedSound = localStorage.getItem('shuffle15_sound');
+          if (savedSound !== null) {
+            const isOn = savedSound === 'true';
+            SoundFX.setEnabled(isOn);
+            this.updateSoundIcon(isOn);
+          }
+
+          const savedSize = parseInt(localStorage.getItem('shuffle15_size'), 10);
+          if ([3, 4, 5].includes(savedSize)) {
+            this.size = savedSize;
+          }
+        } catch (e) {
+          console.warn('localStorage unavailable:', e);
+        }
+      }
+
+      setAccent(color, persist = true) {
+        const allowedAccents = ['indigo', 'emerald', 'cyan', 'rose'];
+        if (!allowedAccents.includes(color)) color = 'indigo';
+
+        document.body.setAttribute('data-accent', color);
+        document.querySelectorAll('.accent-dot').forEach(dot => {
+          if (dot.dataset.color === color) {
+            dot.classList.remove('opacity-70');
+            dot.classList.add('ring-2', 'ring-offset-2', `ring-${color}-500`, 'ring-offset-slate-900');
+          } else {
+            dot.classList.add('opacity-70');
+            dot.classList.remove('ring-2', 'ring-offset-2', 'ring-indigo-500', 'ring-emerald-500', 'ring-cyan-500', 'ring-rose-500', 'ring-offset-slate-900');
+          }
+        });
+
+        if (persist) {
+          try { localStorage.setItem('shuffle15_accent', color); } catch (_) {}
+        }
+      }
+
+      updateSoundIcon(isOn) {
+        document.getElementById('icon-sound-on').classList.toggle('hidden', !isOn);
+        document.getElementById('icon-sound-off').classList.toggle('hidden', isOn);
+      }
+
+      isBoardSolvable(arr, n) {
+        let inversions = 0;
+        for (let i = 0; i < arr.length; i++) {
+          if (arr[i] === 0) continue;
+          for (let j = i + 1; j < arr.length; j++) {
+            if (arr[j] === 0) continue;
+            if (arr[i] > arr[j]) inversions++;
+          }
+        }
+
+        if (n % 2 === 1) {
+          return inversions % 2 === 0;
+        } else {
+          const emptyIdx = arr.indexOf(0);
+          const emptyRowFromTop = Math.floor(emptyIdx / n);
+          const blankRowFromBottom = n - emptyRowFromTop;
+          return (inversions + blankRowFromBottom) % 2 === 1;
+        }
+      }
+
+      isBoardAlreadySolved(arr) {
+        for (let i = 0; i < arr.length - 1; i++) {
+          if (arr[i] !== i + 1) return false;
+        }
+        return arr[arr.length - 1] === 0;
+      }
+
+      generateSolvableBoard(n) {
+        const total = n * n;
+        let arr = Array.from({ length: total - 1 }, (_, i) => i + 1);
+        arr.push(0);
+
+        let emptyIdx = total - 1;
+        let lastEmptyIdx = -1;
+        const shuffleSteps = n === 3 ? 140 : n === 4 ? 240 : 380;
+
+        for (let step = 0; step < shuffleSteps; step++) {
+          const r = Math.floor(emptyIdx / n);
+          const c = emptyIdx % n;
+          const neighbors = [];
+
+          if (r > 0) neighbors.push(emptyIdx - n);
+          if (r < n - 1) neighbors.push(emptyIdx + n);
+          if (c > 0) neighbors.push(emptyIdx - 1);
+          if (c < n - 1) neighbors.push(emptyIdx + 1);
+
+          const filtered = neighbors.filter(idx => idx !== lastEmptyIdx);
+          const pick = filtered[Math.floor(Math.random() * filtered.length)];
+
+          arr[emptyIdx] = arr[pick];
+          arr[pick] = 0;
+          lastEmptyIdx = emptyIdx;
+          emptyIdx = pick;
+        }
+
+        if (!this.isBoardSolvable(arr, n) || this.isBoardAlreadySolved(arr)) {
+          const i1 = arr[0] === 0 ? 2 : 0;
+          const i2 = arr[1] === 0 ? 2 : 1;
+          [arr[i1], arr[i2]] = [arr[i2], arr[i1]];
+        }
+
+        return arr;
+      }
+
+      initGame(newSize = this.size) {
+        this.size = newSize;
+        try { localStorage.setItem('shuffle15_size', String(newSize)); } catch (_) {}
+
+        document.querySelectorAll('.size-btn').forEach(btn => {
+          const isMatch = parseInt(btn.dataset.size, 10) === this.size;
+          if (isMatch) {
+            btn.className = 'size-btn min-h-[36px] sm:min-h-0 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-slate-800 text-white shadow-sm';
+          } else {
+            btn.className = 'size-btn min-h-[36px] sm:min-h-0 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white';
+          }
+        });
+
+        this.stopTimer();
+        this.moves = 0;
+        this.seconds = 0;
+        this.isPlaying = false;
+        this.isSolved = false;
+        this.solvedTilesSet.clear();
+        this.solvedRowsSet.clear();
+        this.rowToastContainerEl.innerHTML = '';
+
+        this.updateStatsUI();
+        this.updateBestRecordsUI();
+
+        this.board = this.generateSolvableBoard(this.size);
+        this.buildBoardDOM();
+
+        // Seed initial solved tiles & rows silently without triggering celebration FX on shuffle
+        this.syncInitialSolvedState();
+        this.positionTiles(false);
+      }
+
+      buildBoardDOM() {
+        const n = this.size;
+        this.recessesEl.style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr))`;
+        this.recessesEl.style.gridTemplateRows = `repeat(${n}, minmax(0, 1fr))`;
+        this.recessesEl.innerHTML = '';
+
+        for (let i = 0; i < n * n; i++) {
+          const slot = document.createElement('div');
+          slot.className = 'rounded-xl sm:rounded-2xl bg-slate-900/85 border border-slate-800/70 shadow-inner relative flex items-center justify-center';
+          slot.dataset.slotIndex = String(i);
+          this.recessesEl.appendChild(slot);
+        }
+
+        // Create sliding tile elements (1 to N*N - 1)
+        this.tilesLayerEl.innerHTML = '';
+        this.tileElements.clear();
+
+        const fontSizeClass = n === 3 ? 'text-3xl sm:text-4xl' : n === 4 ? 'text-2xl sm:text-3xl' : 'text-lg sm:text-2xl';
+
+        for (let val = 1; val < n * n; val++) {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'puzzle-tile rounded-xl sm:rounded-2xl';
+          wrapper.dataset.value = String(val);
+
+          const inner = document.createElement('div');
+          inner.className = 'tile-inner flex flex-col items-center justify-center border-2 border-slate-700/90 select-none';
+
+          // Specular aurora sweep layer
+          const sheen = document.createElement('div');
+          sheen.className = 'tile-sheen';
+
+          const numSpan = document.createElement('span');
+          numSpan.className = `tile-num font-mono font-extrabold tracking-tight ${fontSizeClass} text-slate-100 transition-colors duration-300`;
+          numSpan.textContent = String(val);
+
+          inner.appendChild(sheen);
+          inner.appendChild(numSpan);
+          wrapper.appendChild(inner);
+
+          wrapper.addEventListener('click', () => this.handleTileClick(val));
+
+          this.tilesLayerEl.appendChild(wrapper);
+          this.tileElements.set(val, wrapper);
+        }
+      }
+
+      isRowComplete(rowIdx) {
+        const n = this.size;
+        const start = rowIdx * n;
+        for (let c = 0; c < n; c++) {
+          const idx = start + c;
+          const expectedVal = idx === n * n - 1 ? 0 : idx + 1;
+          if (this.board[idx] !== expectedVal) return false;
+        }
+        return true;
+      }
+
+      syncInitialSolvedState() {
+        const n = this.size;
+        this.solvedTilesSet.clear();
+        this.solvedRowsSet.clear();
+
+        this.board.forEach((val, idx) => {
+          if (val !== 0 && idx === val - 1) {
+            this.solvedTilesSet.add(val);
+          }
+        });
+
+        for (let r = 0; r < n; r++) {
+          if (this.isRowComplete(r)) {
+            this.solvedRowsSet.add(r);
+          }
+        }
+      }
+
+      /**
+       * Positions all tiles and triggers progressive visual/audio celebrations:
+       * 1) Individual Tile Lock-in
+       * 2) Complete Row Solved
+       */
+      positionTiles(triggerCelebrations = true) {
+        const n = this.size;
+        const containerWidth = this.tilesLayerEl.clientWidth;
+        if (!containerWidth) return;
+
+        const gap = window.innerWidth < 640 ? 6 : 10;
+        const tileSize = (containerWidth - gap * (n - 1)) / n;
+        const padOffset = window.innerWidth < 640 ? 8 : 14; // matches inset-2 / sm:inset-3.5
+
+        const newlyLockedTiles = [];
+        const currentSolvedTiles = new Set();
+
+        this.board.forEach((val, idx) => {
+          if (val === 0) return;
+          const el = this.tileElements.get(val);
+          if (!el) return;
+
+          const row = Math.floor(idx / n);
+          const col = idx % n;
+          const x = col * (tileSize + gap);
+          const y = row * (tileSize + gap);
+
+          el.style.width = `${tileSize}px`;
+          el.style.height = `${tileSize}px`;
+          el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+
+          const isCorrectSlot = idx === val - 1;
+          el.classList.toggle('tile-solved', isCorrectSlot);
+
+          if (isCorrectSlot) {
+            currentSolvedTiles.add(val);
+            if (triggerCelebrations && !this.solvedTilesSet.has(val)) {
+              newlyLockedTiles.push({
+                val,
+                el,
+                cx: padOffset + x + tileSize / 2,
+                cy: padOffset + y + tileSize / 2
+              });
+            }
+          }
+        });
+
+        this.solvedTilesSet = currentSolvedTiles;
+
+        // Evaluate Row Completion transitions
+        const newlySolvedRows = [];
+        const currentSolvedRows = new Set();
+
+        for (let r = 0; r < n; r++) {
+          const complete = this.isRowComplete(r);
+          if (complete) {
+            currentSolvedRows.add(r);
+            if (triggerCelebrations && !this.solvedRowsSet.has(r)) {
+              newlySolvedRows.push(r);
+            }
+          }
+
+          // Mark tiles belonging to a solved row
+          const rowStart = r * n;
+          for (let c = 0; c < n; c++) {
+            const tileVal = this.board[rowStart + c];
+            if (tileVal !== 0) {
+              const tileEl = this.tileElements.get(tileVal);
+              if (tileEl) tileEl.classList.toggle('tile-row-solved', complete);
+            }
+          }
+        }
+
+        this.solvedRowsSet = currentSolvedRows;
+
+        // Trigger Milestone 1: Individual Tile Lock-in Effects
+        if (triggerCelebrations && newlyLockedTiles.length > 0) {
+          const accentColor = getComputedStyle(document.body).getPropertyValue('--accent-secondary').trim() || '#818cf8';
+          newlyLockedTiles.forEach(item => {
+            this.triggerTileLockFeedback(item.el, item.cx, item.cy, accentColor);
+          });
+        }
+
+        // Trigger Milestone 2: Complete Row Solved Effects (if board isn't about to do full victory finale)
+        const fullBoardSolved = this.isBoardAlreadySolved(this.board);
+        if (triggerCelebrations && newlySolvedRows.length > 0 && !fullBoardSolved) {
+          newlySolvedRows.forEach((rowIdx, i) => {
+            setTimeout(() => {
+              this.triggerRowCompleteFeedback(rowIdx, tileSize, gap, padOffset, containerWidth);
+            }, i * 160);
+          });
+        }
+
+        return { newlyLockedCount: newlyLockedTiles.length, newlySolvedRowsCount: newlySolvedRows.length };
+      }
+
+      triggerTileLockFeedback(tileEl, cx, cy, accentColor) {
+        // Spring bounce class
+        tileEl.classList.remove('animate-tile-lock');
+        void tileEl.offsetWidth; // Force reflow
+        tileEl.classList.add('animate-tile-lock');
+
+        // Expanding ripple ring element
+        const ring = document.createElement('div');
+        ring.className = 'tile-ripple-ring';
+        tileEl.appendChild(ring);
+        setTimeout(() => ring.remove(), 580);
+
+        // Local sparkle particles
+        BoardFX.emitTileSparkle(cx, cy, accentColor);
+      }
+
+      triggerRowCompleteFeedback(rowIdx, tileSize, gap, padOffset, containerWidth) {
+        const n = this.size;
+        SoundFX.playRowComplete(rowIdx);
+
+        // Subtle haptic tap on supported devices
+        if (navigator.vibrate) {
+          try { navigator.vibrate([18, 30, 28]); } catch (_) {}
+        }
+
+        // Board ambient glow pulse
+        this.boardWellEl.classList.remove('board-celebrate-pulse');
+        void this.boardWellEl.offsetWidth;
+        this.boardWellEl.classList.add('board-celebrate-pulse');
+
+        // Sequential left-to-right wave bounce & aurora light sweep across the row
+        const rowStart = rowIdx * n;
+        for (let c = 0; c < n; c++) {
+          const val = this.board[rowStart + c];
+          if (val === 0) continue;
+          const tileEl = this.tileElements.get(val);
+          if (!tileEl) continue;
+
+          setTimeout(() => {
+            tileEl.classList.remove('animate-row-wave', 'animate-row-sweep');
+            void tileEl.offsetWidth;
+            tileEl.classList.add('animate-row-wave', 'animate-row-sweep');
+          }, c * 65);
+        }
+
+        // Row sparkle sweep on board FX canvas
+        const yCenter = padOffset + rowIdx * (tileSize + gap) + tileSize / 2;
+        BoardFX.emitRowSweep(yCenter, containerWidth + padOffset * 2);
+
+        // Floating celebratory toast pill
+        this.showRowToast(rowIdx);
+      }
+
+      showRowToast(rowIdx) {
+        const toast = document.createElement('div');
+        toast.className = 'animate-row-toast px-3.5 py-1 rounded-full text-xs font-extrabold tracking-wide bg-amber-400 text-slate-950 border border-amber-400/50 shadow-lg whitespace-nowrap flex items-center gap-1.5';
+        toast.innerHTML = `<span>✦</span><span>Row ${rowIdx + 1} Complete!</span>`;
+        this.rowToastContainerEl.innerHTML = '';
+        this.rowToastContainerEl.appendChild(toast);
+        setTimeout(() => toast.remove(), 1700);
+      }
+
+      handleTileClick(val) {
+        if (this.isSolved) return;
+
+        const n = this.size;
+        const tileIdx = this.board.indexOf(val);
+        const emptyIdx = this.board.indexOf(0);
+
+        const tileRow = Math.floor(tileIdx / n);
+        const tileCol = tileIdx % n;
+        const emptyRow = Math.floor(emptyIdx / n);
+        const emptyCol = emptyIdx % n;
+
+        if (tileRow !== emptyRow && tileCol !== emptyCol) {
+          return;
+        }
+
+        let movedCount = 0;
+
+        if (tileRow === emptyRow) {
+          const step = tileCol < emptyCol ? -1 : 1;
+          for (let c = emptyCol; c !== tileCol; c += step) {
+            const targetIdx = emptyRow * n + c;
+            const sourceIdx = emptyRow * n + (c + step);
+            this.board[targetIdx] = this.board[sourceIdx];
+            movedCount++;
+          }
+          this.board[tileIdx] = 0;
+        } else if (tileCol === emptyCol) {
+          const step = tileRow < emptyRow ? -1 : 1;
+          for (let r = emptyRow; r !== tileRow; r += step) {
+            const targetIdx = r * n + emptyCol;
+            const sourceIdx = (r + step) * n + emptyCol;
+            this.board[targetIdx] = this.board[sourceIdx];
+            movedCount++;
+          }
+          this.board[tileIdx] = 0;
+        }
+
+        if (movedCount > 0) {
+          if (!this.isPlaying) {
+            this.startTimer();
+          }
+          this.moves += 1;
+          this.updateStatsUI();
+
+          const { newlyLockedCount } = this.positionTiles(true);
+          SoundFX.playSlide(movedCount, newlyLockedCount);
+          this.checkVictory();
+        }
+      }
+
+      moveDirection(dir) {
+        if (this.isSolved) return;
+
+        const n = this.size;
+        const emptyIdx = this.board.indexOf(0);
+        const emptyRow = Math.floor(emptyIdx / n);
+        const emptyCol = emptyIdx % n;
+
+        let targetRow = emptyRow;
+        let targetCol = emptyCol;
+
+        if (dir === 'UP' && emptyRow < n - 1) targetRow++;
+        else if (dir === 'DOWN' && emptyRow > 0) targetRow--;
+        else if (dir === 'LEFT' && emptyCol < n - 1) targetCol++;
+        else if (dir === 'RIGHT' && emptyCol > 0) targetCol--;
+        else return;
+
+        const targetIdx = targetRow * n + targetCol;
+        const tileVal = this.board[targetIdx];
+        if (tileVal) {
+          this.handleTileClick(tileVal);
+        }
+      }
+
+      startTimer() {
+        this.isPlaying = true;
+        this.timerInterval = setInterval(() => {
+          this.seconds++;
+          this.timerEl.textContent = this.formatTime(this.seconds);
+        }, 1000);
+      }
+
+      stopTimer() {
+        this.isPlaying = false;
+        if (this.timerInterval) {
+          clearInterval(this.timerInterval);
+          this.timerInterval = null;
+        }
+      }
+
+      formatTime(totalSec) {
+        const mins = Math.floor(totalSec / 60);
+        const secs = totalSec % 60;
+        return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      }
+
+      updateStatsUI() {
+        this.moveCountEl.textContent = String(this.moves);
+        this.timerEl.textContent = this.formatTime(this.seconds);
+      }
+
+      getBestKey() {
+        return `shuffle15_best_${this.size}`;
+      }
+
+      getBestRecords() {
+        try {
+          const raw = localStorage.getItem(this.getBestKey());
+          return raw ? JSON.parse(raw) : { moves: null, time: null };
+        } catch (_) {
+          return { moves: null, time: null };
+        }
+      }
+
+      updateBestRecordsUI() {
+        const best = this.getBestRecords();
+        this.bestMovesEl.textContent = best.moves !== null ? `★ ${best.moves}` : '--';
+        this.bestTimeEl.textContent = best.time !== null ? `★ ${this.formatTime(best.time)}` : '--';
+      }
+
+      /**
+       * Milestone 3: Grand Victory Finale
+       * - Synchronized diagonal wave across all tiles transforming them into luminous gold-trimmed gems
+       * - Places a glowing star completion emblem inside the final empty recess
+       * - Multi-stage fireworks + triumphant fanfare + haptic pattern
+       */
+      triggerVictoryFinale() {
+        const n = this.size;
+
+        // Haptic celebration pattern on supported mobile devices
+        if (navigator.vibrate) {
+          try { navigator.vibrate([30, 40, 30, 40, 80]); } catch (_) {}
+        }
+
+        // Golden pulse on board well
+        this.boardWellEl.classList.remove('board-celebrate-pulse');
+        void this.boardWellEl.offsetWidth;
+        this.boardWellEl.classList.add('board-celebrate-pulse');
+
+        // Diagonal wave from top-left (0,0) to bottom-right (n-1, n-1)
+        for (let r = 0; r < n; r++) {
+          for (let c = 0; c < n; c++) {
+            const idx = r * n + c;
+            const val = this.board[idx];
+            const diagonalDelay = (r + c) * 65;
+
+            if (val !== 0) {
+              const tileEl = this.tileElements.get(val);
+              if (tileEl) {
+                setTimeout(() => {
+                  tileEl.classList.add('tile-victory', 'animate-row-wave', 'animate-row-sweep');
+                }, diagonalDelay);
+              }
+            } else {
+              // Illuminate the bottom-right empty recess with a golden completion star emblem
+              const lastSlot = this.recessesEl.querySelector(`[data-slot-index="${idx}"]`);
+              if (lastSlot) {
+                setTimeout(() => {
+                  lastSlot.innerHTML = `
+                    <div class="victory-emblem w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-amber-300 to-amber-500 text-slate-950 flex items-center justify-center shadow-[0_0_24px_rgba(251,191,36,0.75)]">
+                      <svg class="w-6 h-6 sm:w-7 sm:h-7" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l7.1-1.01L12 2z"/>
+                      </svg>
+                    </div>
+                  `;
+                }, diagonalDelay);
+              }
+            }
+          }
+        }
+      }
+
+      checkVictory() {
+        if (!this.isBoardAlreadySolved(this.board)) return;
+
+        this.isSolved = true;
+        this.stopTimer();
+        SoundFX.playWin();
+        Confetti.burst();
+        this.triggerVictoryFinale();
+
+        // Check and persist personal bests
+        const best = this.getBestRecords();
+        let isNewRecord = false;
+
+        if (best.moves === null || this.moves < best.moves) {
+          best.moves = this.moves;
+          isNewRecord = true;
+        }
+        if (best.time === null || this.seconds < best.time) {
+          best.time = this.seconds;
+          isNewRecord = true;
+        }
+
+        try {
+          localStorage.setItem(this.getBestKey(), JSON.stringify(best));
+        } catch (_) {}
+
+        this.updateBestRecordsUI();
+
+        // Allow the diagonal gem wave and completion emblem to shine before opening the summary card
+        const waveDuration = (this.size * 2) * 65 + 420;
+        setTimeout(() => {
+          const modeLabel = this.size === 3 ? '3×3 Easy' : this.size === 4 ? '4×4 Classic' : '5×5 Hard';
+          document.getElementById('win-subtitle').textContent = `${modeLabel} Mode Completed`;
+          document.getElementById('win-moves').textContent = String(this.moves);
+          document.getElementById('win-time').textContent = this.formatTime(this.seconds);
+
+          const recordBadge = document.getElementById('new-record-badge');
+          recordBadge.classList.toggle('hidden', !isNewRecord);
+
+          const winModal = document.getElementById('win-modal');
+          winModal.classList.remove('hidden');
+          winModal.classList.add('flex');
+        }, waveDuration);
+      }
+
+      bindEvents() {
+        window.addEventListener('resize', () => this.positionTiles(false));
+
+        document.getElementById('shuffle-btn').addEventListener('click', () => {
+          const icon = document.getElementById('shuffle-icon');
+          icon.style.transform = 'rotate(180deg)';
+          setTimeout(() => { icon.style.transform = ''; }, 300);
+          SoundFX.playSlide(2, 0);
+          this.initGame(this.size);
+        });
+
+        document.querySelectorAll('.size-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const newSize = parseInt(btn.dataset.size, 10);
+            if (newSize !== this.size) {
+              SoundFX.playSlide(1, 0);
+              this.initGame(newSize);
+            }
+          });
+        });
+
+        document.querySelectorAll('.accent-dot').forEach(dot => {
+          dot.addEventListener('click', () => {
+            this.setAccent(dot.dataset.color, true);
+          });
+        });
+
+        document.getElementById('sound-toggle-btn').addEventListener('click', () => {
+          const next = !SoundFX.isEnabled();
+          SoundFX.setEnabled(next);
+          this.updateSoundIcon(next);
+          if (next) SoundFX.playSlide(1, 1);
+          try { localStorage.setItem('shuffle15_sound', String(next)); } catch (_) {}
+        });
+
+        window.addEventListener('keydown', (e) => {
+          if (!document.getElementById('win-modal').classList.contains('hidden')) return;
+
+          switch (e.key) {
+            case 'ArrowUp':
+            case 'w':
+            case 'W':
+              e.preventDefault();
+              this.moveDirection('UP');
+              break;
+            case 'ArrowDown':
+            case 's':
+            case 'S':
+              e.preventDefault();
+              this.moveDirection('DOWN');
+              break;
+            case 'ArrowLeft':
+            case 'a':
+            case 'A':
+              e.preventDefault();
+              this.moveDirection('LEFT');
+              break;
+            case 'ArrowRight':
+            case 'd':
+            case 'D':
+              e.preventDefault();
+              this.moveDirection('RIGHT');
+              break;
+          }
+        });
+
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        this.boardWellEl.addEventListener('touchstart', (e) => {
+          if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+          }
+        }, { passive: true });
+
+        this.boardWellEl.addEventListener('touchend', (e) => {
+          if (e.changedTouches.length !== 1) return;
+          const dx = e.changedTouches[0].clientX - touchStartX;
+          const dy = e.changedTouches[0].clientY - touchStartY;
+          const absX = Math.abs(dx);
+          const absY = Math.abs(dy);
+
+          if (Math.max(absX, absY) < 24) return;
+
+          if (absX > absY) {
+            this.moveDirection(dx > 0 ? 'RIGHT' : 'LEFT');
+          } else {
+            this.moveDirection(dy > 0 ? 'DOWN' : 'UP');
+          }
+        }, { passive: true });
+
+        const closeWinModal = () => {
+          const modal = document.getElementById('win-modal');
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+        };
+
+        document.getElementById('win-close-btn').addEventListener('click', closeWinModal);
+        document.getElementById('play-again-btn').addEventListener('click', () => {
+          closeWinModal();
+          this.initGame(this.size);
+        });
+
+        const closePwaModal = () => {
+          const modal = document.getElementById('pwa-modal');
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+        };
+        document.getElementById('pwa-modal-close').addEventListener('click', closePwaModal);
+        document.getElementById('pwa-modal-ok').addEventListener('click', closePwaModal);
+      }
+    }
+
+    // Initialize PWA & Game on DOM Ready
+    window.addEventListener('DOMContentLoaded', () => {
+      PWAManager.init();
+      window.shuffleGame = new ShuffleGame();
+    });
+  </script>
+</body>
+</html>
