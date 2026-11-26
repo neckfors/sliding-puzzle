@@ -1,7 +1,7 @@
 // Service worker for Shuffle 15. Bump VERSION on every release: the page then shows "New version available".
-const VERSION = '1.2.1';
+const VERSION = '1.2.2';
 const CACHE = 'shuffle-15-' + VERSION;
-const FILES = ['./', './index.html', './style.css', './game.js', './pwa.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
+const FILES = ['./', './index.html', './style.css', './game.js', './pwa.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png'];
 
 // No skipWaiting() here: a new version waits until the page asks for it (after the user taps Update).
 self.addEventListener('install', (event) => {

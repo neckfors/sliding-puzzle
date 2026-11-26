@@ -11,6 +11,8 @@ Play it: https://neckfors.github.io/sliding-puzzle/
 - Progress you can see and hear: a tile in its right place glows amber with a rising tone, a finished row sweeps with a chime, and the whole puzzle ends with a gold wave, fanfare and confetti.
 - Personal best per board size, with your name: when you set a record you can type a name, and it is remembered for the next record.
 
+The app icon (a sliding board) is in `icons/`.
+
 ## Offline and updates
 
 The game works offline after the first visit. When a new version is published, a bar at the top says "New version available" with an Update button; nothing reloads until you tap it. The app checks for updates when you return to it and every 30 minutes. The version number is shown at the bottom of the screen. (Maintainers: bump VERSION in sw.js on every release.)
